@@ -1,11 +1,14 @@
 [phases.setup]
-nixPkgs = ["python311", "ffmpeg"]
+nixPkgs = [
+  "nodejs_22",
+  "ffmpeg",
+  "python311"
+]
 
 [phases.install]
 cmds = [
-  "python3 -m pip install --upgrade pip",
-  "python3 -m pip install yt-dlp"
+  "npm install"
 ]
 
 [start]
-cmd = "export PATH=$PATH:$HOME/.local/bin && node index.js"
+cmd = "node index.js"
