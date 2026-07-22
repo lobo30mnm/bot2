@@ -401,9 +401,3 @@ async function main() {
 main().catch((err) => {
   console.error('Falha ao iniciar o bot:', err);
 });
-
-"config.js" deixa só assim:
-
-module.exports = {
-  prefix: '!',
-};
