@@ -1,13 +1,12 @@
 [phases.setup]
 nixPkgs = [
-  "nodejs_22",
   "ffmpeg",
   "python311"
 ]
 
 [phases.install]
 cmds = [
-  "npm install"
+  "npm ci"
 ]
 
 [start]
