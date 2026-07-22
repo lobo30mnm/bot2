@@ -12,10 +12,19 @@ const TOKEN = process.env.TOKEN;
 const PREFIX = process.env.PREFIX || "!";
 const BOT_NAME = process.env.BOT_NAME || "Music Bot";
 
-/**
- * Resolve binários sem tentar instalar nada em runtime.
- * No Railway, o ideal é o binário já vir no ambiente.
- */
+if (!TOKEN) {
+  console.error("❌ TOKEN não definido nas variáveis de ambiente.");
+  process.exit(1);
+}
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UnhandledRejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("UncaughtException:", error);
+});
+
 function commandExists(cmd) {
   try {
     const out = execSync(`command -v ${cmd}`, { encoding: "utf8" }).trim();
@@ -33,17 +42,13 @@ function firstExisting(paths) {
 }
 
 function resolveFfmpeg() {
-  // 1) Variável de ambiente
   if (process.env.FFMPEG_PATH && fs.existsSync(process.env.FFMPEG_PATH)) {
     return process.env.FFMPEG_PATH;
   }
 
-  // 2) Pacote opcional, se você decidir instalar depois
   try {
     const ffmpegStatic = require("ffmpeg-static");
-    if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
-      return ffmpegStatic;
-    }
+    if (ffmpegStatic && fs.existsSync(ffmpegStatic)) return ffmpegStatic;
   } catch {}
 
   try {
@@ -53,7 +58,6 @@ function resolveFfmpeg() {
     }
   } catch {}
 
-  // 3) PATH do sistema
   return commandExists("ffmpeg");
 }
 
@@ -73,7 +77,7 @@ function resolveYtDlp() {
   return commandExists("yt-dlp");
 }
 
-function appendToPath(binPath) {
+function appendBinaryPath(binPath) {
   if (!binPath) return;
   const dir = path.dirname(binPath);
   const current = process.env.PATH || "";
@@ -90,8 +94,8 @@ function formatDuration(seconds) {
   const h = Math.floor(n / 3600);
   const m = Math.floor((n % 3600) / 60);
   const s = Math.floor(n % 60);
-
   const pad = (v) => String(v).padStart(2, "0");
+
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
@@ -110,17 +114,12 @@ async function safeSend(message, content) {
   }
 }
 
-if (!TOKEN) {
-  console.error("❌ TOKEN não definido nas variáveis de ambiente.");
-  process.exit(1);
-}
-
 const ffmpegPath = resolveFfmpeg();
 const ytDlpPath = resolveYtDlp();
 
 if (ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
-  appendToPath(ffmpegPath);
+  appendBinaryPath(ffmpegPath);
   console.log(`✅ FFmpeg: ${ffmpegPath}`);
 } else {
   console.log("⚠️ FFmpeg não encontrado no ambiente.");
@@ -128,7 +127,7 @@ if (ffmpegPath) {
 
 if (ytDlpPath) {
   process.env.YTDLP_PATH = ytDlpPath;
-  appendToPath(ytDlpPath);
+  appendBinaryPath(ytDlpPath);
   console.log(`✅ yt-dlp: ${ytDlpPath}`);
 } else {
   console.log("⚠️ yt-dlp não encontrado no ambiente.");
@@ -137,14 +136,6 @@ if (ytDlpPath) {
 console.log("====================================");
 console.log(`🤖 ${BOT_NAME}`);
 console.log("====================================");
-
-process.on("unhandledRejection", (reason) => {
-  console.error("UnhandledRejection:", reason);
-});
-
-process.on("uncaughtException", (error) => {
-  console.error("UncaughtException:", error);
-});
 
 const client = new Client({
   intents: [
@@ -157,7 +148,6 @@ const client = new Client({
 });
 
 const distube = new DisTube(client, {
-  emitNewSongOnly: false,
   plugins: [
     new YtDlpPlugin({
       update: false,

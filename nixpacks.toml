@@ -1,6 +1,6 @@
 [phases.setup]
 nixPkgs = [
-  "nodejs_22",
+  "...",
   "ffmpeg",
   "python3",
   "yt-dlp"
