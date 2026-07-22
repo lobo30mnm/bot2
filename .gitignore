@@ -1,4 +1,5 @@
 node_modules/
 .cache/
-cookies.txt
-.env
+cookies.txt/
+.env/
+index.zip

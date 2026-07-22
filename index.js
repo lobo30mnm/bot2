@@ -395,9 +395,15 @@ async function main() {
     console.error('⚠️ [Uncaught Exception]:', error);
   });
 
-  await client.login(config.token);
+  await client.login(process.env.TOKEN);
 }
 
 main().catch((err) => {
   console.error('Falha ao iniciar o bot:', err);
 });
+
+"config.js" deixa só assim:
+
+module.exports = {
+  prefix: '!',
+};
