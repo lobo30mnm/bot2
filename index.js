@@ -1,4 +1,3 @@
-const fs = require('fs');
 const {
   Client,
   GatewayIntentBits,
@@ -16,36 +15,11 @@ const config = require('./config.js');
 
 const PREFIX = config.prefix || '!';
 
-function resolveBinary(candidates, fallback) {
-  for (const filePath of candidates) {
-    if (fs.existsSync(filePath)) return filePath;
-  }
-  return fallback;
-}
-
-const ytDlpPath = resolveBinary(
-  [
-    '/data/data/com.termux/files/usr/bin/yt-dlp',
-    '/usr/bin/yt-dlp',
-    '/usr/local/bin/yt-dlp',
-  ],
-  'yt-dlp'
-);
-
-const ffmpegPath = resolveBinary(
-  [
-    '/data/data/com.termux/files/usr/bin/ffmpeg',
-    '/usr/bin/ffmpeg',
-    '/usr/local/bin/ffmpeg',
-  ],
-  'ffmpeg'
-);
-
 try {
-  setYtDlpPath(ytDlpPath);
-  setFFmpegPath(ffmpegPath);
-  console.log(`✅ yt-dlp: ${ytDlpPath}`);
-  console.log(`✅ ffmpeg: ${ffmpegPath}`);
+  setYtDlpPath('yt-dlp');
+  setFFmpegPath('ffmpeg');
+  console.log('✅ yt-dlp configurado: yt-dlp');
+  console.log('✅ ffmpeg configurado: ffmpeg');
 } catch (err) {
   console.warn('⚠️ Não foi possível configurar yt-dlp/ffmpeg:', err?.message || err);
 }
@@ -75,13 +49,8 @@ function parseDuration(duration) {
   const parts = String(duration).trim().split(':').map(Number);
   if (parts.some(Number.isNaN)) return 0;
 
-  if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-
-  if (parts.length === 2) {
-    return parts[0] * 60 + parts[1];
-  }
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
 
   return 0;
 }
@@ -92,9 +61,7 @@ function formatDuration(totalSeconds) {
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
 
-  return [h, m, s]
-    .map((n) => String(n).padStart(2, '0'))
-    .join(':');
+  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
 function getQueueDuration(queue) {
@@ -167,7 +134,7 @@ async function main() {
     }
   });
 
-  client.once('clientReady', (readyClient) => {
+  client.once('ready', (readyClient) => {
     console.log(`🤖 Bot de Música Online como ${readyClient.user.tag}!`);
     readyClient.user.setActivity(`${PREFIX}help | Músicas 🎵`, {
       type: ActivityType.Listening,
@@ -198,7 +165,7 @@ async function main() {
             { name: '🔀 shuffle', value: 'Embaralha a fila.' },
             { name: 'ℹ️ nowplaying / np', value: 'Mostra a música atual.' },
           )
-          .setFooter({ text: 'E.Music System', iconURL: client.user.displayAvatarURL() });
+          .setFooter({ text: 'E.Music System', iconURL: client.user?.displayAvatarURL?.() || undefined });
 
         return message.reply({ embeds: [helpEmbed] });
       }
