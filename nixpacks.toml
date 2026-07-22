@@ -1,13 +1,10 @@
 [phases.setup]
 nixPkgs = [
+  "nodejs_22",
   "ffmpeg",
-  "python311"
-]
-
-[phases.install]
-cmds = [
-  "npm ci"
+  "python3",
+  "yt-dlp"
 ]
 
 [start]
-cmd = "node index.js"
+cmd = "npm start"
