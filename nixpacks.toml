@@ -6,3 +6,6 @@ cmds = [
   "python3 -m pip install --upgrade pip",
   "python3 -m pip install yt-dlp"
 ]
+
+[start]
+cmd = "export PATH=$PATH:$HOME/.local/bin && node index.js"

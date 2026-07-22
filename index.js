@@ -1,370 +1,389 @@
-const {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  ActivityType,
-} = require('discord.js');
-const { Player, useQueue, useHistory } = require('discord-player');
-const { DefaultExtractors } = require('@discord-player/extractor');
-const {
-  YouTubeDlpExtractor,
-  setFFmpegPath,
-  setYtDlpPath,
-} = require('discord-player-youtubedlp');
-const config = require('./config.js');
+// index.js
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { spawnSync, execSync } = require("child_process");
 
-const PREFIX = config.prefix || '!';
-
-try {
-  setYtDlpPath('yt-dlp');
-  setFFmpegPath('ffmpeg');
-  console.log('✅ yt-dlp configurado: yt-dlp');
-  console.log('✅ ffmpeg configurado: ffmpeg');
-} catch (err) {
-  console.warn('⚠️ Não foi possível configurar yt-dlp/ffmpeg:', err?.message || err);
-}
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+process.on("unhandledRejection", (reason) => {
+  console.error("UnhandledRejection:", reason);
 });
 
-const player = new Player(client);
+process.on("uncaughtException", (error) => {
+  console.error("UncaughtException:", error);
+});
 
-function toTrackArray(queueTracks) {
-  if (!queueTracks) return [];
-  if (typeof queueTracks.toArray === 'function') return queueTracks.toArray();
-  if (Array.isArray(queueTracks)) return queueTracks;
-  if (Array.isArray(queueTracks.data)) return queueTracks.data;
-  return [];
+const TOKEN = process.env.TOKEN;
+const PREFIX = process.env.PREFIX || "!";
+const BOT_NAME = process.env.BOT_NAME || "Music Bot";
+
+// Se quiser desligar a auto-instalação em runtime:
+// AUTO_INSTALL_DEPS=false
+// AUTO_INSTALL_YTDLP=false
+const AUTO_INSTALL_DEPS = process.env.AUTO_INSTALL_DEPS !== "false";
+const AUTO_INSTALL_YTDLP = process.env.AUTO_INSTALL_YTDLP !== "false";
+
+if (!TOKEN) {
+  console.error("❌ TOKEN não definido nas variáveis de ambiente.");
+  process.exit(1);
 }
 
-function parseDuration(duration) {
-  if (!duration || duration === 'LIVE') return 0;
-
-  const parts = String(duration).trim().split(':').map(Number);
-  if (parts.some(Number.isNaN)) return 0;
-
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-
-  return 0;
-}
-
-function formatDuration(totalSeconds) {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-
-  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
-}
-
-function getQueueDuration(queue) {
-  if (!queue) return '00:00:00';
-
-  const tracks = [queue.currentTrack, ...toTrackArray(queue.tracks)].filter(Boolean);
-  const totalSeconds = tracks.reduce((acc, track) => {
-    const d = track?.duration || track?.durationFormatted || '0:00';
-    return acc + parseDuration(d);
-  }, 0);
-
-  return formatDuration(totalSeconds);
-}
-
-function getTrackTitle(track) {
-  return track?.title || track?.name || 'Sem título';
-}
-
-function getTrackDuration(track) {
-  return track?.durationFormatted || track?.duration || 'LIVE';
-}
-
-function buildTrackEmbed(track, color = '#57F287') {
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle('Tocando agora')
-    .setDescription(`**[${getTrackTitle(track)}](${track?.url || '#'})**`)
-    .addFields(
-      { name: 'Duração', value: `\`${getTrackDuration(track)}\``, inline: true },
-      { name: 'Autor', value: `${track?.author || 'Desconhecido'}`, inline: true },
-    );
-
-  if (track?.thumbnail) embed.setThumbnail(track.thumbnail);
-  return embed;
-}
-
-async function main() {
-  await player.extractors.loadMulti(DefaultExtractors);
-
-  await player.extractors.register(YouTubeDlpExtractor, {
-    debug: false,
+function runCommand(command) {
+  const result = spawnSync("sh", ["-lc", command], {
+    encoding: "utf8",
+    stdio: "inherit",
   });
 
-  console.log('✅ YouTubeDlpExtractor carregado.');
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`Comando falhou: ${command}`);
+  }
+}
 
-  player.events.on('playerStart', (queue, track) => {
-    const channel = queue?.metadata;
-    if (!channel?.send) return;
+function moduleExists(name) {
+  try {
+    require.resolve(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-    channel.send({
-      embeds: [buildTrackEmbed(track, '#57F287')],
-    }).catch(() => {});
-  });
+function ensureDependencies() {
+  const deps = ["discord.js", "distube", "@distube/yt-dlp"];
+  const missing = deps.filter((dep) => !moduleExists(dep));
 
-  player.events.on('error', (queue, error) => {
-    console.error('⚠️ [Player error]:', error?.message || error || 'erro desconhecido');
-    if (queue?.metadata?.send) {
-      queue.metadata
-        .send(`❌ Erro no player:\n\`\`\`${error?.message || String(error)}\`\`\``)
-        .catch(() => {});
-    }
-  });
+  if (missing.length > 0) {
+    console.log(`📦 Instalando dependências faltando: ${missing.join(", ")}`);
+    runCommand(`npm install ${missing.map((d) => JSON.stringify(d)).join(" ")}`);
+  }
+}
 
-  player.events.on('playerError', (queue, error) => {
-    console.error('⚠️ [Player stream error]:', error?.message || error || 'erro desconhecido');
-    if (queue?.metadata?.send) {
-      queue.metadata
-        .send(`❌ Erro no áudio:\n\`\`\`${error?.message || String(error)}\`\`\``)
-        .catch(() => {});
-    }
-  });
+function fileExists(filePath) {
+  try {
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
 
-  client.once('ready', (readyClient) => {
-    console.log(`🤖 Bot de Música Online como ${readyClient.user.tag}!`);
-    readyClient.user.setActivity(`${PREFIX}help | Músicas 🎵`, {
-      type: ActivityType.Listening,
-    });
-  });
+function findYtDlp() {
+  const candidates = [
+    process.env.YTDLP_PATH,
+    "yt-dlp",
+    "/root/.local/bin/yt-dlp",
+    "/usr/local/bin/yt-dlp",
+    "/usr/bin/yt-dlp",
+    "/app/.local/bin/yt-dlp",
+    path.join(os.homedir(), ".local", "bin", "yt-dlp"),
+    "/data/data/com.termux/files/usr/bin/yt-dlp",
+  ].filter(Boolean);
 
-  client.on('messageCreate', async (message) => {
+  for (const item of candidates) {
     try {
-      if (!message.guild || message.author.bot || !message.content.startsWith(PREFIX)) return;
-
-      const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-      const command = (args.shift() || '').toLowerCase();
-
-      if (command === 'help' || command === 'ajuda' || command === 'h') {
-        const helpEmbed = new EmbedBuilder()
-          .setColor('#5865F2')
-          .setTitle('🎵 Central de Comandos - E.Music')
-          .setDescription(`Use os comandos abaixo com o prefixo \`${PREFIX}\`:`)
-          .addFields(
-            { name: '▶️ play / p <nome/url>', value: 'Toca música ou playlist.' },
-            { name: '⏭️ skip / s', value: 'Pula para a próxima faixa.' },
-            { name: '⏮️ previous / voltar', value: 'Volta para a faixa anterior.' },
-            { name: '⏹️ stop / parar', value: 'Para a reprodução e limpa a fila.' },
-            { name: '📜 queue / fila / q', value: 'Mostra a fila atual.' },
-            { name: '🔊 volume / vol <1-100>', value: 'Ajusta o volume.' },
-            { name: '🔁 loop / repeat <off/song/queue/auto>', value: 'Altera o modo de repetição.' },
-            { name: '⏯️ pause / resume', value: 'Pausa ou volta a tocar.' },
-            { name: '🔀 shuffle', value: 'Embaralha a fila.' },
-            { name: 'ℹ️ nowplaying / np', value: 'Mostra a música atual.' },
-          )
-          .setFooter({ text: 'E.Music System', iconURL: client.user?.displayAvatarURL?.() || undefined });
-
-        return message.reply({ embeds: [helpEmbed] });
+      if (item.includes("/") && fileExists(item)) {
+        return item;
       }
 
-      if (command === 'play' || command === 'p') {
-        const voiceChannel = message.member?.voice?.channel;
-        if (!voiceChannel) return message.reply('❌ Você precisa estar em um canal de voz!');
+      const found = spawnSync("sh", ["-lc", `command -v ${item} || true`], {
+        encoding: "utf8",
+      }).stdout.trim();
 
-        const query = args.join(' ');
-        if (!query) return message.reply('❌ Digite o nome ou o link da música/playlist!');
+      if (found) return found;
+    } catch {
+      // ignore
+    }
+  }
 
-        const searchingEmbed = new EmbedBuilder()
-          .setColor('#FEE75C')
-          .setDescription(`🔎 **Buscando no acervo:** \`${query}\`...`);
+  return null;
+}
 
-        const searchingMsg = await message.reply({ embeds: [searchingEmbed] });
+function ensureYtDlp() {
+  let ytDlpPath = findYtDlp();
 
-        await player.play(voiceChannel, query, {
-          nodeOptions: {
-            metadata: message.channel,
-            bufferingTimeout: 30000,
-            leaveOnStop: false,
-            leaveOnStopCooldown: 5000,
-            leaveOnEnd: false,
-            leaveOnEndCooldown: 15000,
-            leaveOnEmpty: false,
-            leaveOnEmptyCooldown: 300000,
-            skipOnNoStream: true,
-          },
-        });
+  if (!ytDlpPath && AUTO_INSTALL_YTDLP) {
+    console.log("📥 yt-dlp não encontrado. Tentando instalar...");
 
-        await searchingMsg.delete().catch(() => {});
+    const commands = [
+      "python -m pip install --user -U yt-dlp",
+      "python3 -m pip install --user -U yt-dlp",
+    ];
 
-        const queue = useQueue(message.guild.id);
-        const currentTrack = queue?.currentTrack;
-        const upcomingTracks = toTrackArray(queue?.tracks);
+    for (const cmd of commands) {
+      try {
+        runCommand(cmd);
+        ytDlpPath = findYtDlp();
+        if (ytDlpPath) break;
+      } catch (err) {
+        console.warn(`⚠️ Falha ao executar: ${cmd}`);
+      }
+    }
+  }
 
-        if (currentTrack?.playlist && upcomingTracks.length > 0) {
-          const playlistName =
-            currentTrack.playlist?.title ||
-            currentTrack.playlist?.name ||
-            currentTrack.playlist?.author ||
-            'Playlist';
+  return ytDlpPath;
+}
 
-          const totalDuration = getQueueDuration(queue);
-          const songCount = upcomingTracks.length + 1;
+function formatDuration(seconds) {
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total < 0) return "00:00";
 
-          const playlistEmbed = new EmbedBuilder()
-            .setColor('#5865F2')
-            .setTitle('🎶 Playlist adicionada')
-            .setDescription(`**${playlistName}**`)
-            .addFields(
-              { name: '🎵 Músicas', value: `${songCount}`, inline: true },
-              { name: '⏱️ Duração total', value: totalDuration, inline: true },
-            );
+  const s = Math.floor(total % 60);
+  const m = Math.floor((total / 60) % 60);
+  const h = Math.floor(total / 3600);
+  const pad = (n) => String(n).padStart(2, "0");
 
-          if (currentTrack.thumbnail) playlistEmbed.setThumbnail(currentTrack.thumbnail);
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
 
-          await message.channel.send({ embeds: [playlistEmbed] }).catch(() => {});
+async function safeSend(message, content) {
+  try {
+    if (message?.reply) {
+      await message.reply({
+        content,
+        allowedMentions: { repliedUser: false },
+      });
+      return;
+    }
+  } catch {
+    // fallback
+  }
+
+  try {
+    if (message?.channel?.send) {
+      await message.channel.send(content);
+    }
+  } catch (err) {
+    console.error("Falha ao enviar mensagem:", err);
+  }
+}
+
+(async () => {
+  if (AUTO_INSTALL_DEPS) {
+    try {
+      ensureDependencies();
+    } catch (err) {
+      console.warn("⚠️ Não foi possível instalar dependências automaticamente.");
+      console.warn(err?.message || err);
+    }
+  }
+
+  const ytDlpPath = ensureYtDlp();
+
+  if (ytDlpPath) {
+    const ytDir = path.dirname(ytDlpPath);
+    const currentPath = process.env.PATH || "";
+    const parts = currentPath.split(path.delimiter);
+
+    if (!parts.includes(ytDir)) {
+      process.env.PATH = `${ytDir}${path.delimiter}${currentPath}`;
+    }
+
+    console.log(`✅ yt-dlp encontrado em: ${ytDlpPath}`);
+  } else {
+    console.log("⚠️ yt-dlp não encontrado. O bot vai tentar usar o PATH.");
+  }
+
+  const { Client, GatewayIntentBits, Partials, Events } = require("discord.js");
+  const { DisTube } = require("distube");
+  const { YtDlpPlugin } = require("@distube/yt-dlp");
+
+  console.log("====================================");
+  console.log(`🤖 ${BOT_NAME}`);
+  console.log("====================================");
+
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.MessageContent,
+    ],
+    partials: [Partials.Channel],
+  });
+
+  const distube = new DisTube(client, {
+    plugins: [
+      new YtDlpPlugin({
+        update: false,
+      }),
+    ],
+  });
+
+  client.once(Events.ClientReady, () => {
+    console.log(`✅ Logado como ${client.user.tag}`);
+    console.log(`🤖 ${BOT_NAME}`);
+  });
+
+  distube.on("playSong", async (queue, song) => {
+    try {
+      await queue.textChannel?.send(
+        `▶️ Tocando agora: **${song.name}**\n⏱️ Duração: **${formatDuration(song.duration)}**`
+      );
+    } catch {
+      // ignore
+    }
+  });
+
+  distube.on("addSong", async (queue, song) => {
+    try {
+      await queue.textChannel?.send(`➕ Adicionado à fila: **${song.name}**`);
+    } catch {
+      // ignore
+    }
+  });
+
+  distube.on("addList", async (queue, playlist) => {
+    try {
+      await queue.textChannel?.send(
+        `📃 Playlist adicionada: **${playlist.name}** (${playlist.songs.length} músicas)`
+      );
+    } catch {
+      // ignore
+    }
+  });
+
+  distube.on("searchNoResult", async (message, query) => {
+    await safeSend(message, `❌ Nenhum resultado para: **${query}**`);
+  });
+
+  distube.on("error", async (channel, error) => {
+    console.error("❌ Erro no player:", error);
+
+    const msg = `❌ Erro no player:\n\`\`\`${String(
+      error?.message || error
+    )}\`\`\``;
+
+    try {
+      if (channel?.send) {
+        await channel.send(msg);
+      }
+    } catch {
+      // ignore
+    }
+  });
+
+  client.on(Events.MessageCreate, async (message) => {
+    try {
+      if (!message.guild || message.author.bot) return;
+      if (!message.content.startsWith(PREFIX)) return;
+
+      const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
+      const cmd = (args.shift() || "").toLowerCase();
+      const query = args.join(" ");
+      const member = message.member;
+      const voiceChannel = member?.voice?.channel;
+
+      if (["play", "p", "tocar"].includes(cmd)) {
+        if (!voiceChannel) {
+          return await safeSend(message, "❌ Entre em um canal de voz primeiro.");
         }
+
+        if (!query) {
+          return await safeSend(message, `❌ Use: \`${PREFIX}play nome ou link\``);
+        }
+
+        await distube.play(voiceChannel, query, {
+          textChannel: message.channel,
+          member,
+        });
 
         return;
       }
 
-      if (command === 'skip' || command === 's') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Não há nenhuma música na fila!');
+      const queue = distube.getQueue(message.guildId);
 
-        queue.node.skip();
-        return message.reply('⏭️ **Música pulada!**');
+      if (cmd === "skip" || cmd === "s") {
+        if (!queue) return await safeSend(message, "❌ Não tem nada tocando.");
+        await queue.skip();
+        return await safeSend(message, "⏭️ Música pulada.");
       }
 
-      if (command === 'previous' || command === 'voltar') {
-        const history = useHistory(message.guild.id);
-        if (!history) return message.reply('❌ Não há histórico de músicas!');
-
-        await history.previous();
-        return message.reply('⏮️ **Voltando para a faixa anterior!**');
+      if (cmd === "stop") {
+        if (!queue) return await safeSend(message, "❌ Não tem nada tocando.");
+        await queue.stop();
+        return await safeSend(message, "⏹️ Player parado.");
       }
 
-      if (command === 'stop' || command === 'parar') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Nenhuma música tocando no momento.');
-
-        queue.delete();
-        return message.reply('⏹️ **A reprodução foi encerrada e a fila limpa!**');
+      if (cmd === "pause") {
+        if (!queue) return await safeSend(message, "❌ Não tem nada tocando.");
+        if (typeof queue.pause === "function") await queue.pause();
+        return await safeSend(message, "⏸️ Pausado.");
       }
 
-      if (command === 'queue' || command === 'fila' || command === 'q') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ A fila está vazia no momento!');
+      if (cmd === "resume") {
+        if (!queue) return await safeSend(message, "❌ Não tem nada tocando.");
+        if (typeof queue.resume === "function") await queue.resume();
+        return await safeSend(message, "▶️ Retomado.");
+      }
 
-        const currentTrack = queue.currentTrack;
-        const upcomingTracks = toTrackArray(queue.tracks).slice(0, 10);
+      if (cmd === "volume" || cmd === "vol") {
+        if (!queue) return await safeSend(message, "❌ Não tem nada tocando.");
 
-        const lines = [];
-        if (currentTrack) {
-          lines.push(`▶️ **Tocando agora:** ${getTrackTitle(currentTrack)} - \`${getTrackDuration(currentTrack)}\``);
+        const vol = Number(args[0]);
+        if (!Number.isInteger(vol) || vol < 1 || vol > 100) {
+          return await safeSend(message, `❌ Use: \`${PREFIX}volume 1-100\``);
         }
 
-        upcomingTracks.forEach((track, index) => {
-          lines.push(`\`${index + 1}.\` ${getTrackTitle(track)} - \`${getTrackDuration(track)}\``);
-        });
-
-        const queueEmbed = new EmbedBuilder()
-          .setColor('#2F3136')
-          .setTitle('🎶 Fila de Reprodução')
-          .setDescription(lines.join('\n') || 'Fila vazia.')
-          .setFooter({
-            text: `Total de músicas: ${toTrackArray(queue.tracks).length + (currentTrack ? 1 : 0)} | Duração: ${getQueueDuration(queue)}`,
-          });
-
-        return message.reply({ embeds: [queueEmbed] });
-      }
-
-      if (command === 'volume' || command === 'vol') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Nenhuma música tocando.');
-
-        const volume = parseInt(args[0], 10);
-        if (Number.isNaN(volume) || volume < 1 || volume > 100) {
-          return message.reply('❌ Informe um número entre **1 e 100**.');
+        if (typeof queue.setVolume === "function") {
+          await queue.setVolume(vol);
+        } else {
+          queue.volume = vol;
         }
 
-        queue.node.setVolume(volume);
-        return message.reply(`🔊 Volume ajustado para **${volume}%**!`);
+        return await safeSend(message, `🔊 Volume ajustado para **${vol}%**.`);
       }
 
-      if (command === 'loop' || command === 'repeat') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Nenhuma música tocando.');
-
-        const modeStr = (args[0] || '').toLowerCase();
-        let mode = queue.repeatMode ?? 0;
-
-        if (modeStr === 'off' || modeStr === 'desativar' || modeStr === '0') mode = 0;
-        else if (modeStr === 'song' || modeStr === 'music' || modeStr === 'musica' || modeStr === 'música' || modeStr === '1') mode = 1;
-        else if (modeStr === 'queue' || modeStr === 'fila' || modeStr === '2') mode = 2;
-        else if (modeStr === 'auto' || modeStr === 'autoplay' || modeStr === '3') mode = 3;
-        else mode = ((queue.repeatMode ?? 0) + 1) % 4;
-
-        queue.setRepeatMode(mode);
-
-        const modeName =
-          mode === 3 ? '🔁 **Autoplay**' :
-          mode === 2 ? '🔁 **Fila Inteira**' :
-          mode === 1 ? '🔂 **Música Atual**' :
-          '➡️ **Desativado**';
-
-        return message.reply(`Modo de repetição: ${modeName}`);
-      }
-
-      if (command === 'pause' || command === 'resume' || command === 'pausar') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Nenhuma música tocando.');
-
-        queue.node.setPaused(!queue.node.isPaused());
-        return message.reply(queue.node.isPaused() ? '⏸️ **Pausado!**' : '▶️ **Continuando!**');
-      }
-
-      if (command === 'shuffle' || command === 'embaralhar') {
-        const queue = useQueue(message.guild.id);
-        if (!queue) return message.reply('❌ Nenhuma música tocando.');
-
-        if (toTrackArray(queue.tracks).length < 2) {
-          return message.reply('❌ Não há músicas suficientes para embaralhar.');
+      if (cmd === "queue" || cmd === "fila") {
+        if (!queue || !queue.songs?.length) {
+          return await safeSend(message, "❌ A fila está vazia.");
         }
 
-        queue.tracks.shuffle();
-        return message.reply('🔀 **Fila embaralhada!**');
+        const now = queue.songs[0];
+        const upcoming = queue.songs
+          .slice(1, 11)
+          .map(
+            (song, i) =>
+              `${i + 1}. ${song.name} (${formatDuration(song.duration)})`
+          )
+          .join("\n");
+
+        return await safeSend(
+          message,
+          `🎶 **Tocando agora:** ${now.name} (${formatDuration(
+            now.duration
+          )})\n\n**Próximas:**\n${upcoming || "Sem próximas músicas."}`
+        );
       }
 
-      if (command === 'nowplaying' || command === 'np') {
-        const queue = useQueue(message.guild.id);
-        if (!queue || !queue.currentTrack) return message.reply('❌ Nenhuma música tocando.');
-
-        return message.reply({
-          embeds: [buildTrackEmbed(queue.currentTrack, '#57F287')],
-        });
+      if (cmd === "leave" || cmd === "sair") {
+        if (!queue) return await safeSend(message, "❌ Não estou em nenhum canal de voz.");
+        await queue.stop();
+        return await safeSend(message, "👋 Saí do canal.");
       }
-    } catch (err) {
-      console.error('Erro ao processar comando:', err);
-      return message.channel
-        .send(`❌ Ocorreu um erro ao executar o comando.\n\`\`\`${err?.message || String(err)}\`\`\``)
-        .catch(() => {});
+
+      if (cmd === "help" || cmd === "ajuda") {
+        return await safeSend(
+          message,
+          [
+            `**Comandos:**`,
+            `\`${PREFIX}play <nome ou link>\``,
+            `\`${PREFIX}skip\``,
+            `\`${PREFIX}stop\``,
+            `\`${PREFIX}pause\``,
+            `\`${PREFIX}resume\``,
+            `\`${PREFIX}volume <1-100>\``,
+            `\`${PREFIX}queue\``,
+            `\`${PREFIX}leave\``,
+          ].join("\n")
+        );
+      }
+    } catch (error) {
+      console.error("Erro no MessageCreate:", error);
+      await safeSend(
+        message,
+        `❌ Erro geral:\n\`\`\`${String(error?.message || error)}\`\`\``
+      );
     }
   });
 
-  process.on('unhandledRejection', (error) => {
-    console.error('⚠️ [Unhandled Rejection]:', error);
-  });
-
-  process.on('uncaughtException', (error) => {
-    console.error('⚠️ [Uncaught Exception]:', error);
-  });
-
-  await client.login(process.env.TOKEN);
-}
-
-main().catch((err) => {
-  console.error('Falha ao iniciar o bot:', err);
-});
+  client.login(TOKEN);
+})();
