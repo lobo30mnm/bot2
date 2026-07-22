@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@discord-player/extractor": "^7.2.0",
+    "@discordjs/voice": "^0.19.2",
+    "discord-player": "^7.2.0",
+    "discord-player-youtubedlp": "^1.1.8",
+    "discord.js": "^14.27.0",
+    "opusscript": "^0.0.8",
+    "play-dl": "^1.9.7",
+    "undici": "^8.8.0",
+    "youtube-dl-exec": "^3.1.9",
+    "youtubei.js": "^17.2.0",
+    "yt-dlp-wrap": "^2.3.12",
+    "ytmusic-distube-plugin": "^1.2.0"
+  }
+}
