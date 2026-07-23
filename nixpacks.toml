@@ -1,6 +1,5 @@
 [phases.setup]
 nixPkgs = [
-  "...",
   "ffmpeg",
   "python3",
   "yt-dlp"
