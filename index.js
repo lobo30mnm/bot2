@@ -1,19 +1,3 @@
-const { execSync } = require("child_process");
-
-try {
-  console.log("PATH =", process.env.PATH);
-  console.log("FFMPEG =", execSync("which ffmpeg").toString());
-  console.log(execSync("ffmpeg -version").toString());
-} catch (e) {
-  console.error("FFmpeg não encontrado:", e.message);
-}
-
-try {
-  console.log("YTDLP =", execSync("which yt-dlp").toString());
-} catch (e) {
-  console.error("yt-dlp não encontrado:", e.message);
-}
-
 "use strict";
 
 const fs = require("fs");
@@ -93,7 +77,7 @@ function resolveYtDlp() {
   return commandExists("yt-dlp");
 }
 
-function appendBinaryPath(binPath) {
+function appendBinaryDir(binPath) {
   if (!binPath) return;
   const dir = path.dirname(binPath);
   const current = process.env.PATH || "";
@@ -133,9 +117,13 @@ async function safeSend(message, content) {
 const ffmpegPath = resolveFfmpeg();
 const ytDlpPath = resolveYtDlp();
 
+console.log("====================================");
+console.log(`🤖 ${BOT_NAME}`);
+console.log("====================================");
+
 if (ffmpegPath) {
   process.env.FFMPEG_PATH = ffmpegPath;
-  appendBinaryPath(ffmpegPath);
+  appendBinaryDir(ffmpegPath);
   console.log(`✅ FFmpeg: ${ffmpegPath}`);
 } else {
   console.log("⚠️ FFmpeg não encontrado no ambiente.");
@@ -143,15 +131,11 @@ if (ffmpegPath) {
 
 if (ytDlpPath) {
   process.env.YTDLP_PATH = ytDlpPath;
-  appendBinaryPath(ytDlpPath);
+  appendBinaryDir(ytDlpPath);
   console.log(`✅ yt-dlp: ${ytDlpPath}`);
 } else {
   console.log("⚠️ yt-dlp não encontrado no ambiente.");
 }
-
-console.log("====================================");
-console.log(`🤖 ${BOT_NAME}`);
-console.log("====================================");
 
 const client = new Client({
   intents: [
