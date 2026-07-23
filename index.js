@@ -1,3 +1,19 @@
+const { execSync } = require("child_process");
+
+try {
+  console.log("PATH =", process.env.PATH);
+  console.log("FFMPEG =", execSync("which ffmpeg").toString());
+  console.log(execSync("ffmpeg -version").toString());
+} catch (e) {
+  console.error("FFmpeg não encontrado:", e.message);
+}
+
+try {
+  console.log("YTDLP =", execSync("which yt-dlp").toString());
+} catch (e) {
+  console.error("yt-dlp não encontrado:", e.message);
+}
+
 "use strict";
 
 const fs = require("fs");
